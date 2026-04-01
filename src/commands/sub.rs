@@ -46,7 +46,7 @@ pub async fn sub(db: Arc<Mutex<Database>>, ctx: CmdContext) -> Result<(), teloxi
 
     if cfg!(feature = "hosted-by-iovxw") && db.lock().await.all_feeds().len() >= 1500 {
         let msg = tr!("subscription_rate_limit");
-        update_response(&ctx.bot, target, MsgText::markdown(msg)).await?;
+        update_response(&ctx.bot, target, MsgText::html(msg)).await?;
         return Ok(());
     }
 

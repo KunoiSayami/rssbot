@@ -6,18 +6,18 @@ parsing_error = "Parsing error （{source}）"
 commands_in_private_channel = "Please use commands in private chat to manage subscriptions for the channel"
 start_message = """Command list:
 /rss       - Display a list of currently subscribed RSS feeds
-/sub       - Subscribe to an RSS: `/sub http://example.com/feed.xml`
-/unsub     - Unsubscribe from an RSS: `/unsub http://example.com/feed.xml`
+/sub       - Subscribe to an RSS: <code>/sub http://example.com/feed.xml</code>
+/unsub     - Unsubscribe from an RSS: <code>/unsub http://example.com/feed.xml</code>
 /export    - Export to OPML
 All commands can be followed by the channel ID to manage channel subscriptions,
-f.e. `/sub @BotNews http://example.com/feed.xml`"""
+f.e. <code>/sub @BotNews http://example.com/feed.xml</code>"""
 subscription_list = "Subscription list:"
 subscription_list_empty = "Subscription list is empty"
 sub_how_to_use = "How to use: /sub [Channel ID] <RSS URL>"
 subscribed_to_rss = "Subscribed to RSS"
 subscription_rate_limit = """The global maximum number of subscriptions has been reached.
 To prevent excessive server pressure, please unsubscribe from unnecessary RSS or
-[Build your own service](https://github.com/iovxw/rssbot).
+<a href="https://github.com/iovxw/rssbot">Build your own service</a>.
 Note: This bot is mainly used to provide instant reminder functions,
 such as server status monitoring and community forum reminders.
 The default update frequency is 5 minutes, not recommended for other types of RSS subscriptions.

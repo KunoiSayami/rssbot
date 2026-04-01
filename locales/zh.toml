@@ -6,17 +6,17 @@ parsing_error = "解析错误（{source}）"
 commands_in_private_channel = "请在私聊中使用命令为频道管理订阅"
 start_message = """命令列表：
 /rss       - 显示当前订阅的 RSS 列表
-/sub       - 订阅一个 RSS：`/sub http://example.com/feed.xml`
-/unsub     - 退订一个 RSS：`/unsub http://example.com/feed.xml`
+/sub       - 订阅一个 RSS：<code>/sub http://example.com/feed.xml</code>
+/unsub     - 退订一个 RSS：<code>/unsub http://example.com/feed.xml</code>
 /export    - 导出为 OPML
 所有命令均可在后面跟上频道 ID 来管理频道订阅
-例如 `/sub @BotNews http://example.com/feed.xml`"""
+例如 <code>/sub @BotNews http://example.com/feed.xml</code>"""
 subscription_list = "订阅列表："
 subscription_list_empty = "订阅列表为空"
 sub_how_to_use = "使用方法: /sub [Channel ID] <RSS URL>"
 subscribed_to_rss = "已订阅过的 RSS"
 subscription_rate_limit = """已达到全局最大订阅数量, 为防止服务器压力过大请退订不需要的 RSS 或者
-[自己搭建服务](https://github.com/iovxw/rssbot)
+<a href="https://github.com/iovxw/rssbot">自己搭建服务</a>
 注: 本机器人主要用于提供即时提醒功能, 例如服务器状态监控和社区论坛提醒
 默认更新频率为 5 分钟, 不建议用于其他类型的 RSS 订阅
 如有相关需求推荐使用其他 RSS 机器人实现"""

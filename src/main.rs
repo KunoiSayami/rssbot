@@ -120,6 +120,8 @@ fn parse_human_size(s: &str) -> anyhow::Result<u64> {
 async fn main() -> anyhow::Result<()> {
     enable_fail_fast();
 
+    env_logger::Builder::from_default_env().init();
+
     let opt = Opt::from_args();
     let db = Arc::new(Mutex::new(Database::open(opt.database.clone())?));
 

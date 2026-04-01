@@ -40,13 +40,6 @@ impl MsgText {
             parse_mode: Some(ParseMode::Html),
         }
     }
-
-    pub fn markdown(s: impl Into<String>) -> Self {
-        MsgText {
-            text: s.into(),
-            parse_mode: Some(ParseMode::MarkdownV2),
-        }
-    }
 }
 
 /// Replaces `Arc<tbot::contexts::Command>` passed to each command handler.
