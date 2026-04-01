@@ -2,8 +2,6 @@
 
 **Other Languages:** [Chinese](README.md)
 
-Telegram RSS bot [@RustRssBot](http://t.me/RustRssBot)
-
 **Supports:**
  - [x] RSS 0.9
  - [x] RSS 0.91
@@ -31,7 +29,7 @@ The pre-compiled binaries can be downloaded directly from [Releases](https://git
 
 **Please try to download from the Link above, if that's not feasible or you have other requirements you should compile manually**
 
-Install *Rust Nightly* and *Cargo* ([`rustup` recommended](https://www.rustup.rs/)) first, then:
+Install *Rust* and *Cargo* ([`rustup` recommended](https://www.rustup.rs/)) first, then:
 
 ```
 LOCALE=en cargo build --release
@@ -48,17 +46,20 @@ USAGE:
     rssbot [FLAGS] [OPTIONS] <token>
 
 FLAGS:
-    -h, --help          Prints help information
-        --insecure      DANGER: Insecure mode, accept invalid TLS certificates
-        --restricted    Make bot commands only accessible for group admins
-    -V, --version       Prints version information
+        --fetch-on-start    Fetch all feeds immediately on startup instead of waiting for the first interval
+    -h, --help              Prints help information
+        --insecure          DANGER: Insecure mode, accept invalid TLS certificates
+        --restricted        Make bot commands only accessible for group admins
+        --systemd           Use systemd-compatible log format (no timestamps, level prefix only)
+    -v, --verbose           Enable verbose logging (-v: fetcher logs; -vv: also rustls/reqwest/h2; -vvv: also teloxide)
+    -V, --version           Prints version information
 
 OPTIONS:
         --admin <user id>...        Private mode, only specified user can use this bot. This argument can be passed
                                     multiple times to allow multiple admins
         --api-uri <tgapi-uri>       Custom telegram api URI [default: https://api.telegram.org/]
     -d, --database <path>           Path to database [default: ./rssbot.json]
-        --max-feed-size <bytes>     Maximum feed size, 0 is unlimited [default: 2097152]
+        --max-feed-size <bytes>     Maximum feed size, 0 is unlimited [default: 2M]
         --max-interval <seconds>    Maximum fetch interval [default: 43200]
         --min-interval <seconds>    Minimum fetch interval [default: 300]
 
@@ -72,6 +73,7 @@ Please read the [official docs](https://core.telegram.org/bots#3-how-do-i-create
 
 ## Environment variables
 
+- `RUST_LOG`: Log filter, e.g. `RUST_LOG=rssbot=debug` (see [env_logger docs](https://docs.rs/env_logger/))
 - `HTTP_PROXY`: Proxy for HTTP
 - `HTTPS_PROXY`: Proxy for HTTPS
 - `RSSBOT_DONT_PROXY_FEEDS`: Set to `1` to limit the proxy to Telegram requests
