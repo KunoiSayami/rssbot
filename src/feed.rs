@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
-use std::str;
 
 use quick_xml::events::attributes::Attributes;
 use quick_xml::events::BytesStart;
@@ -33,19 +32,28 @@ fn parse_atom_link<'a, B: std::io::BufRead>(
     attributes: Attributes<'a>,
 ) -> quick_xml::Result<Option<AtomLink<'a>>> {
     let mut href = None;
-    let mut rel = None;
+    let mut rel: Option<Cow<'a, str>> = None;
     for attribute in attributes {
         let attribute = attribute?;
-        match &*reader.decode(attribute.key) {
-            "href" => href = Some(attribute.unescape_and_decode_value(reader)?),
+        let key = reader
+            .decoder()
+            .decode(attribute.key.local_name().as_ref())?;
+        match &*key {
+            "href" => {
+                href = Some(
+                    attribute
+                        .decode_and_unescape_value(reader.decoder())?
+                        .into_owned(),
+                )
+            }
             "rel" => {
-                rel = Some(reader.decode(if let Cow::Borrowed(s) = attribute.value {
-                    s
-                } else {
-                    // Attrbute.value is always Borrowed
-                    // https://docs.rs/quick-xml/0.18.1/src/quick_xml/events/attributes.rs.html#244
-                    unreachable!()
-                }))
+                rel = Some(
+                    reader
+                        .decoder()
+                        .decode(attribute.value.as_ref())?
+                        .into_owned()
+                        .into(),
+                )
             }
             _ => (),
         }
@@ -75,7 +83,7 @@ impl FromXml for SkipThisElement {
         let mut buf = bufs.pop();
         let mut depth = 1u64;
         loop {
-            match reader.read_event(&mut buf)? {
+            match reader.read_event_into(&mut buf)? {
                 XmlEvent::Start(_) => depth += 1,
                 XmlEvent::End(_) if depth == 1 => break,
                 XmlEvent::End(_) => depth -= 1,
@@ -97,12 +105,12 @@ impl FromXml for Option<u32> {
         let mut buf = bufs.pop();
         let mut output = None;
         loop {
-            match reader.read_event(&mut buf)? {
+            match reader.read_event_into(&mut buf)? {
                 XmlEvent::Start(ref e) => {
                     SkipThisElement::from_xml(bufs, reader, e)?;
                 }
                 XmlEvent::Text(ref e) => {
-                    let text = reader.decode(e);
+                    let text = e.decode()?;
                     output = text.parse().ok();
                 }
                 XmlEvent::End(_) | XmlEvent::Eof => break,
@@ -123,16 +131,16 @@ impl FromXml for Option<String> {
         let mut buf = bufs.pop();
         let mut content: Option<String> = None;
         loop {
-            match reader.read_event(&mut buf)? {
+            match reader.read_event_into(&mut buf)? {
                 XmlEvent::Start(ref e) => {
                     SkipThisElement::from_xml(bufs, reader, e)?;
                 }
                 XmlEvent::Text(ref e) => {
-                    let text = e.unescape_and_decode(reader)?;
+                    let text = e.xml_content()?.into_owned();
                     content = Some(text);
                 }
                 XmlEvent::CData(ref e) => {
-                    let text = reader.decode(e).to_string();
+                    let text = e.decode()?.into_owned();
                     content = Some(text);
                 }
                 XmlEvent::End(_) | XmlEvent::Eof => break,
@@ -170,9 +178,9 @@ impl FromXml for Rss {
         let mut sy_freq: Option<u32> = None;
 
         loop {
-            match reader.read_event(&mut buf)? {
+            match reader.read_event_into(&mut buf)? {
                 XmlEvent::Empty(ref e) => {
-                    if reader.decode(e.local_name()) == "link" {
+                    if &*reader.decoder().decode(e.local_name().as_ref())? == "link" {
                         match parse_atom_link(reader, e.attributes())? {
                             Some(AtomLink::Alternate(link)) => rss.link = link,
                             Some(AtomLink::Source(link)) => rss.source = Some(link),
@@ -181,7 +189,7 @@ impl FromXml for Rss {
                     }
                 }
                 XmlEvent::Start(ref e) => {
-                    match &*reader.decode(e.local_name()) {
+                    match &*reader.decoder().decode(e.local_name().as_ref())? {
                         "channel" => {
                             // RSS 0.9 1.0
                             reading_rss_1_0_head = true;
@@ -266,9 +274,9 @@ impl FromXml for Item {
         let mut buf = bufs.pop();
         let mut item = Item::default();
         loop {
-            match reader.read_event(&mut buf)? {
+            match reader.read_event_into(&mut buf)? {
                 XmlEvent::Empty(ref e) => {
-                    if reader.decode(e.name()) == "link" {
+                    if &*reader.decoder().decode(e.name().as_ref())? == "link" {
                         if let Some(AtomLink::Alternate(link)) =
                             parse_atom_link(reader, e.attributes())?
                         {
@@ -277,7 +285,7 @@ impl FromXml for Item {
                     }
                 }
                 XmlEvent::Start(ref e) => {
-                    match &*reader.decode(e.name()) {
+                    match &*reader.decoder().decode(e.name().as_ref())? {
                         "title" => {
                             item.title = <Option<String> as FromXml>::from_xml(bufs, reader, e)?;
                         }
@@ -329,12 +337,12 @@ impl FromXml for Option<SyPeriod> {
         let mut buf = bufs.pop();
         let mut output = None;
         loop {
-            match reader.read_event(&mut buf)? {
+            match reader.read_event_into(&mut buf)? {
                 XmlEvent::Start(ref e) => {
                     SkipThisElement::from_xml(bufs, reader, e)?;
                 }
                 XmlEvent::Text(ref e) => {
-                    let period = match &*reader.decode(e) {
+                    let period = match &*e.decode()? {
                         "hourly" => SyPeriod::Hourly,
                         "daily" => SyPeriod::Daily,
                         "weekly" => SyPeriod::Weekly,
@@ -356,12 +364,12 @@ impl FromXml for Option<SyPeriod> {
 /// NOTE: This function doesn't check the syntax of feed, it only cares about performance
 pub fn parse<B: std::io::BufRead>(reader: B) -> quick_xml::Result<Rss> {
     let mut reader = XmlReader::from_reader(reader);
-    reader.trim_text(true);
+    reader.config_mut().trim_text(true);
     let bufs = BufPool::new(4, 512);
     let mut buf = bufs.pop();
     loop {
-        match reader.read_event(&mut buf)? {
-            XmlEvent::Start(ref e) => match &*reader.decode(e.name()) {
+        match reader.read_event_into(&mut buf)? {
+            XmlEvent::Start(ref e) => match &*reader.decoder().decode(e.name().as_ref())? {
                 "rss" => continue,
                 "channel" | "feed" | "rdf:RDF" => {
                     return Rss::from_xml(&bufs, &mut reader, e);
@@ -370,7 +378,7 @@ pub fn parse<B: std::io::BufRead>(reader: B) -> quick_xml::Result<Rss> {
                     SkipThisElement::from_xml(&bufs, &mut reader, e)?;
                 }
             },
-            XmlEvent::Eof => return Err(quick_xml::Error::UnexpectedEof("feed".to_string())),
+            XmlEvent::Eof => return Err(quick_xml::Error::UnexpectedEof),
             _ => (),
         }
         buf.clear();
@@ -746,7 +754,7 @@ mod test {
         for (data, result) in data.iter().zip(results) {
             let mut reader = XmlReader::from_reader(Cursor::new(data));
             let mut buf = Vec::new();
-            if let XmlEvent::Empty(e) = reader.read_event(&mut buf).unwrap() {
+            if let XmlEvent::Empty(e) = reader.read_event_into(&mut buf).unwrap() {
                 let r = parse_atom_link(&mut reader, e.attributes()).unwrap();
                 assert_eq!(r, result);
             }
@@ -756,7 +764,7 @@ mod test {
     #[test]
     fn empty_input() {
         let r = parse(Cursor::new(&[])).unwrap_err();
-        assert!(matches!(r, quick_xml::Error::UnexpectedEof(s) if s == "feed" ))
+        assert!(matches!(r, quick_xml::Error::UnexpectedEof))
     }
 
     #[test]
