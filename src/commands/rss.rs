@@ -10,9 +10,9 @@ use teloxide::{
 use tokio::sync::Mutex;
 
 use crate::data::Database;
-use crate::messages::{format_large_msg, Escape};
+use crate::messages::{Escape, format_large_msg};
 
-use super::{check_channel_permission, update_response, CmdContext, MsgTarget, MsgText};
+use super::{CmdContext, MsgTarget, MsgText, check_channel_permission, update_response};
 
 pub async fn rss(db: Arc<Mutex<Database>>, ctx: CmdContext) -> Result<(), teloxide::RequestError> {
     let chat_id = ctx.chat_id;

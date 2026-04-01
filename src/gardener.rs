@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use teloxide::{requests::Requester, types::ChatId, Bot};
+use teloxide::{Bot, requests::Requester, types::ChatId};
 use tokio::{
     self,
     sync::Mutex,
     time::{self, Duration},
 };
 
-use crate::data::Database;
 use crate::BOT_ID;
+use crate::data::Database;
 
 pub fn start_pruning(bot: Bot, db: Arc<Mutex<Database>>) {
     let mut interval = time::interval(Duration::from_secs(1 * 24 * 60 * 60));

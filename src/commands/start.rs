@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 
 use crate::data::Database;
 
-use super::{update_response, CmdContext, MsgTarget, MsgText};
+use super::{CmdContext, MsgTarget, MsgText, update_response};
 
 pub async fn start(
     _db: Arc<Mutex<Database>>,

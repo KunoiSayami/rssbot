@@ -1,16 +1,16 @@
 use std::cmp;
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use futures::{future::FutureExt, select_biased};
 use teloxide::{
+    Bot,
     payloads::SendMessageSetters,
     requests::Requester,
     types::{ChatId, LinkPreviewOptions},
-    Bot,
 };
 use tokio::{
     self,
@@ -23,7 +23,7 @@ use tokio_util::time::DelayQueue;
 use crate::client::pull_feed;
 use crate::commands::MsgText;
 use crate::data::{Database, Feed, FeedUpdate};
-use crate::messages::{format_large_msg, Escape};
+use crate::messages::{Escape, format_large_msg};
 
 pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval: u32) {
     let mut queue = FetchQueue::new();

@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 use crate::data::Database;
 use crate::messages::Escape;
 
-use super::{check_channel_permission, update_response, CmdContext, MsgTarget, MsgText};
+use super::{CmdContext, MsgTarget, MsgText, check_channel_permission, update_response};
 
 pub async fn unsub(
     db: Arc<Mutex<Database>>,

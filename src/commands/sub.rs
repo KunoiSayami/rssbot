@@ -6,7 +6,7 @@ use crate::client::pull_feed;
 use crate::data::Database;
 use crate::messages::Escape;
 
-use super::{check_channel_permission, update_response, CmdContext, MsgTarget, MsgText};
+use super::{CmdContext, MsgTarget, MsgText, check_channel_permission, update_response};
 
 pub async fn sub(db: Arc<Mutex<Database>>, ctx: CmdContext) -> Result<(), teloxide::RequestError> {
     let chat_id = ctx.chat_id;

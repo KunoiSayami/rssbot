@@ -1,4 +1,3 @@
-#![feature(error_reporter)]
 #![recursion_limit = "256"]
 
 use std::env;
@@ -175,12 +174,12 @@ fn build_reqwest_client() -> reqwest::Client {
 }
 
 pub fn print_error<E: std::error::Error>(err: E) {
-    eprintln!(
-        "Error: {}",
-        std::error::Report::new(err)
-            .pretty(true)
-            .show_backtrace(true)
-    );
+    eprintln!("Error: {err}");
+    let mut source = err.source();
+    while let Some(cause) = source {
+        eprintln!("  caused by: {cause}");
+        source = cause.source();
+    }
 }
 
 #[cfg(test)]

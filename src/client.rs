@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use reqwest::{
     self,
-    header::{HeaderValue, CONTENT_TYPE},
+    header::{CONTENT_TYPE, HeaderValue},
 };
 use std::sync::OnceLock;
 use thiserror::Error;

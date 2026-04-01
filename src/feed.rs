@@ -3,10 +3,10 @@ use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
-use quick_xml::events::attributes::Attributes;
+use quick_xml::Reader as XmlReader;
 use quick_xml::events::BytesStart;
 use quick_xml::events::Event as XmlEvent;
-use quick_xml::Reader as XmlReader;
+use quick_xml::events::attributes::Attributes;
 use regex::Regex;
 use serde::Deserialize;
 use std::sync::LazyLock;
@@ -380,7 +380,7 @@ pub fn parse<B: std::io::BufRead>(reader: B) -> quick_xml::Result<Rss> {
             XmlEvent::Eof => {
                 return Err(quick_xml::Error::IllFormed(
                     quick_xml::errors::IllFormedError::MissingEndTag("feed".into()),
-                ))
+                ));
             }
             _ => (),
         }
