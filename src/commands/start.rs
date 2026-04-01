@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
-use tbot::{contexts::Command, types::parameters};
 use tokio::sync::Mutex;
 
-use super::{update_response, Database, MsgTarget};
+use crate::data::Database;
+
+use super::{update_response, CmdContext, MsgTarget, MsgText};
 
 pub async fn start(
     _db: Arc<Mutex<Database>>,
-    cmd: Arc<Command>,
-) -> Result<(), tbot::errors::MethodCall> {
-    let target = &mut MsgTarget::new(cmd.chat.id, cmd.message_id);
+    ctx: CmdContext,
+) -> Result<(), teloxide::RequestError> {
+    let target = &mut MsgTarget::new(ctx.chat_id, ctx.message_id);
     let msg = tr!("start_message");
-    update_response(&cmd.bot, target, parameters::Text::with_markdown(msg)).await?;
+    update_response(&ctx.bot, target, MsgText::markdown(msg)).await?;
     Ok(())
 }

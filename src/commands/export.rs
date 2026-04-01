@@ -1,27 +1,28 @@
 use std::sync::Arc;
 
-use tbot::{
-    contexts::Command,
-    types::{input_file, parameters},
-};
+use teloxide::{payloads::SendDocumentSetters, requests::Requester, types::ReplyParameters};
 use tokio::sync::Mutex;
 
 use crate::data::Database;
 use crate::opml::into_opml;
 
-use super::{check_channel_permission, update_response, MsgTarget};
+use super::{check_channel_permission, update_response, CmdContext, MsgTarget, MsgText};
 
 pub async fn export(
     db: Arc<Mutex<Database>>,
-    cmd: Arc<Command>,
-) -> Result<(), tbot::errors::MethodCall> {
-    let chat_id = cmd.chat.id;
-    let channel = &cmd.text.value;
+    ctx: CmdContext,
+) -> Result<(), teloxide::RequestError> {
+    let chat_id = ctx.chat_id;
+    let channel = ctx.text.trim().to_string();
     let mut target_id = chat_id;
-    let target = &mut MsgTarget::new(chat_id, cmd.message_id);
+    let target = &mut MsgTarget::new(chat_id, ctx.message_id);
 
     if !channel.is_empty() {
-        let channel_id = check_channel_permission(&cmd, channel, target).await?;
+        let user_id = match ctx.from.as_ref() {
+            Some(u) => u.id,
+            None => return Ok(()),
+        };
+        let channel_id = check_channel_permission(&ctx.bot, user_id, &channel, target).await?;
         if channel_id.is_none() {
             return Ok(());
         }
@@ -31,22 +32,21 @@ pub async fn export(
     let feeds = db.lock().await.subscribed_feeds(target_id.0);
     if feeds.is_none() {
         update_response(
-            &cmd.bot,
+            &ctx.bot,
             target,
-            parameters::Text::with_plain(tr!("subscription_list_empty")),
+            MsgText::plain(tr!("subscription_list_empty")),
         )
         .await?;
         return Ok(());
     }
     let opml = into_opml(feeds.unwrap());
 
-    cmd.bot
+    ctx.bot
         .send_document(
             chat_id,
-            input_file::Document::with_bytes("feeds.opml", opml.as_bytes()),
+            teloxide::types::InputFile::memory(opml.into_bytes()).file_name("feeds.opml"),
         )
-        .in_reply_to(cmd.message_id)
-        .call()
+        .reply_parameters(ReplyParameters::new(ctx.message_id))
         .await?;
     Ok(())
 }

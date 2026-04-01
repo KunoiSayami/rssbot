@@ -35,9 +35,8 @@ fn parse_atom_link<'a, B: std::io::BufRead>(
     let mut rel: Option<Cow<'a, str>> = None;
     for attribute in attributes {
         let attribute = attribute?;
-        let key = reader
-            .decoder()
-            .decode(attribute.key.local_name().as_ref())?;
+        let local_name = attribute.key.local_name();
+        let key = reader.decoder().decode(local_name.as_ref())?;
         match &*key {
             "href" => {
                 href = Some(
@@ -378,7 +377,11 @@ pub fn parse<B: std::io::BufRead>(reader: B) -> quick_xml::Result<Rss> {
                     SkipThisElement::from_xml(&bufs, &mut reader, e)?;
                 }
             },
-            XmlEvent::Eof => return Err(quick_xml::Error::UnexpectedEof),
+            XmlEvent::Eof => {
+                return Err(quick_xml::Error::IllFormed(
+                    quick_xml::errors::IllFormedError::MissingEndTag("feed".into()),
+                ))
+            }
             _ => (),
         }
         buf.clear();
@@ -764,7 +767,7 @@ mod test {
     #[test]
     fn empty_input() {
         let r = parse(Cursor::new(&[])).unwrap_err();
-        assert!(matches!(r, quick_xml::Error::UnexpectedEof))
+        assert!(matches!(r, quick_xml::Error::IllFormed(_)))
     }
 
     #[test]

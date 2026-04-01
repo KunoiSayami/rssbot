@@ -6,7 +6,12 @@ use std::sync::{
 };
 
 use futures::{future::FutureExt, select_biased};
-use tbot::{types::parameters, Bot};
+use teloxide::{
+    payloads::SendMessageSetters,
+    requests::Requester,
+    types::{ChatId, LinkPreviewOptions},
+    Bot,
+};
 use tokio::{
     self,
     sync::{Mutex, Notify},
@@ -16,6 +21,7 @@ use tokio_stream::StreamExt;
 use tokio_util::time::DelayQueue;
 
 use crate::client::pull_feed;
+use crate::commands::MsgText;
 use crate::data::{Database, Feed, FeedUpdate};
 use crate::messages::{format_large_msg, Escape};
 
@@ -62,7 +68,7 @@ async fn fetch_and_push_updates(
     bot: Bot,
     db: Arc<Mutex<Database>>,
     feed: Feed,
-) -> Result<(), tbot::errors::MethodCall> {
+) -> Result<(), teloxide::RequestError> {
     let new_feed = match pull_feed(&feed.link).await {
         Ok(feed) => feed,
         Err(e) => {
@@ -79,13 +85,7 @@ async fn fetch_and_push_updates(
                     title = Escape(&feed.title),
                     error = Escape(&e.to_user_friendly())
                 );
-                push_updates(
-                    &bot,
-                    &db,
-                    feed.subscribers,
-                    parameters::Text::with_html(&msg),
-                )
-                .await?;
+                push_updates(&bot, &db, feed.subscribers, MsgText::html(&msg)).await?;
             }
             return Ok(());
         }
@@ -106,7 +106,7 @@ async fn fetch_and_push_updates(
                         &bot,
                         &db,
                         feed.subscribers.iter().copied(),
-                        parameters::Text::with_html(&msg),
+                        MsgText::html(&msg),
                     )
                     .await?;
                 }
@@ -121,7 +121,7 @@ async fn fetch_and_push_updates(
                     &bot,
                     &db,
                     feed.subscribers.iter().copied(),
-                    parameters::Text::with_html(&msg),
+                    MsgText::html(&msg),
                 )
                 .await?;
             }
@@ -134,35 +134,33 @@ async fn push_updates<I: IntoIterator<Item = i64>>(
     bot: &Bot,
     db: &Arc<Mutex<Database>>,
     subscribers: I,
-    msg: parameters::Text,
-) -> Result<(), tbot::errors::MethodCall> {
-    use tbot::errors::MethodCall;
+    msg: MsgText,
+) -> Result<(), teloxide::RequestError> {
     for mut subscriber in subscribers {
         'retry: for _ in 0..3 {
-            match bot
-                .send_message(tbot::types::chat::Id(subscriber), msg.clone())
-                .is_web_page_preview_disabled(true)
-                .call()
-                .await
-            {
-                Err(MethodCall::RequestError { description, .. })
-                    if chat_is_unavailable(&description) =>
-                {
+            let mut req = bot
+                .send_message(ChatId(subscriber), &msg.text)
+                .link_preview_options(LinkPreviewOptions {
+                    is_disabled: true,
+                    url: None,
+                    prefer_small_media: false,
+                    prefer_large_media: false,
+                    show_above_text: false,
+                });
+            if let Some(pm) = msg.parse_mode {
+                req = req.parse_mode(pm);
+            }
+            match req.await {
+                Err(teloxide::RequestError::Api(ref e)) if chat_is_unavailable(&e.to_string()) => {
                     db.lock().await.delete_subscriber(subscriber);
                 }
-                Err(MethodCall::RequestError {
-                    migrate_to_chat_id: Some(new_chat_id),
-                    ..
-                }) => {
+                Err(teloxide::RequestError::MigrateToChatId(new_chat_id)) => {
                     db.lock().await.update_subscriber(subscriber, new_chat_id.0);
                     subscriber = new_chat_id.0;
                     continue 'retry;
                 }
-                Err(MethodCall::RequestError {
-                    retry_after: Some(delay),
-                    ..
-                }) => {
-                    time::sleep(Duration::from_secs(delay)).await;
+                Err(teloxide::RequestError::RetryAfter(seconds)) => {
+                    time::sleep(seconds.duration()).await;
                     continue 'retry;
                 }
                 other => {

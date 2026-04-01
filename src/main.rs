@@ -1,18 +1,16 @@
 #![feature(error_reporter)]
 #![recursion_limit = "256"]
 
-use std::convert::TryInto;
 use std::env;
 use std::panic;
 use std::path::PathBuf;
 use std::process;
 use std::sync::Arc;
-
-use anyhow::{anyhow, Context};
-use hyper_proxy::{Intercept, Proxy};
 use std::sync::OnceLock;
+
+use anyhow::Context;
 use structopt::StructOpt;
-use tbot::bot::Uri;
+use teloxide::{requests::Requester, types::UserId};
 use tokio::{self, sync::Mutex};
 
 // Include the tr! macro and localizations
@@ -30,7 +28,7 @@ mod opml;
 use crate::data::Database;
 
 static BOT_NAME: OnceLock<String> = OnceLock::new();
-static BOT_ID: OnceLock<tbot::types::user::Id> = OnceLock::new();
+static BOT_ID: OnceLock<UserId> = OnceLock::new();
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -87,7 +85,7 @@ pub struct Opt {
         value_name = "tgapi-uri",
         default_value = "https://api.telegram.org/"
     )]
-    api_uri: Uri,
+    api_uri: url::Url,
     /// DANGER: Insecure mode, accept invalid TLS certificates
     #[structopt(long)]
     insecure: bool,
@@ -114,8 +112,8 @@ fn parse_human_size(s: &str) -> anyhow::Result<u64> {
         Some('g') => Ok(s[..s.len() - 1].parse::<u64>()? * BASE.pow(3)),
         Some('t') => Ok(s[..s.len() - 1].parse::<u64>()? * BASE.pow(4)),
         Some(x) if x.is_ascii_digit() => Ok(s.parse()?),
-        Some(x) => Err(anyhow!("invalid size character: {}", x)),
-        None => Err(anyhow!("empty size")),
+        Some(x) => Err(anyhow::anyhow!("invalid size character: {}", x)),
+        None => Err(anyhow::anyhow!("empty size")),
     }
 }
 
@@ -125,20 +123,17 @@ async fn main() -> anyhow::Result<()> {
 
     let opt = Opt::from_args();
     let db = Arc::new(Mutex::new(Database::open(opt.database.clone())?));
-    let bot_builder =
-        tbot::bot::Builder::with_string_token(opt.token.clone()).server_uri(opt.api_uri.clone());
-    let bot = if let Some(proxy) = init_proxy() {
-        bot_builder.proxy(proxy).build()
-    } else {
-        bot_builder.build()
-    };
+
+    let client = build_reqwest_client();
+    let bot =
+        teloxide::Bot::with_client(opt.token.clone(), client).set_api_url(opt.api_uri.clone());
+
     let me = bot
         .get_me()
-        .call()
         .await
         .context("Initialization failed, check your network and Telegram token")?;
 
-    let bot_name = me.user.username.clone().unwrap();
+    let bot_name = me.username.clone().unwrap();
     crate::client::init_client(
         &bot_name,
         opt.insecure,
@@ -146,18 +141,14 @@ async fn main() -> anyhow::Result<()> {
     );
 
     BOT_NAME.set(bot_name).unwrap();
-    BOT_ID.set(me.user.id).unwrap();
+    BOT_ID.set(me.id).unwrap();
 
     gardener::start_pruning(bot.clone(), db.clone());
     fetcher::start(bot.clone(), db.clone(), opt.min_interval, opt.max_interval);
 
     let opt = Arc::new(opt);
+    commands::register_commands(bot, opt, db).await;
 
-    let mut event_loop = bot.event_loop();
-    event_loop.username(me.user.username.unwrap());
-    commands::register_commands(&mut event_loop, opt, db);
-
-    event_loop.polling().start().await.unwrap();
     Ok(())
 }
 
@@ -170,20 +161,20 @@ fn enable_fail_fast() {
     }));
 }
 
-fn init_proxy() -> Option<Proxy> {
-    // Telegram Bot API only uses https, no need to check http_proxy
-    env::var("HTTPS_PROXY")
+fn build_reqwest_client() -> reqwest::Client {
+    let mut builder = reqwest::Client::builder();
+    if let Some(proxy_url) = env::var("HTTPS_PROXY")
         .or_else(|_| env::var("https_proxy"))
-        .map(|uri| {
-            let uri = uri
-                .try_into()
-                .unwrap_or_else(|e| panic!("Illegal HTTPS_PROXY: {}", e));
-            Proxy::new(Intercept::All, uri)
-        })
         .ok()
+    {
+        let proxy = reqwest::Proxy::https(&proxy_url)
+            .unwrap_or_else(|e| panic!("Illegal HTTPS_PROXY: {}", e));
+        builder = builder.proxy(proxy);
+    }
+    builder.build().unwrap()
 }
 
-fn print_error<E: std::error::Error>(err: E) {
+pub fn print_error<E: std::error::Error>(err: E) {
     eprintln!(
         "Error: {}",
         std::error::Report::new(err)

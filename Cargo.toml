@@ -1,21 +1,16 @@
 [package]
 name = "rssbot"
-version = "2.0.0-alpha.13"
+version = "2.0.0-alpha.14"
 authors = ["iovxw <iovxw@outlook.com>"]
-edition = "2021"
+edition = "2024"
 
 [features]
 default = ["rustls"]
 
 # enable this to set a subscription limit
 hosted-by-iovxw = ["reqwest/hickory-dns"]
-native-tls = [
-    "tbot/default",
-    "hyper-proxy/default",
-    "reqwest/default",
-    "reqwest/native-tls-vendored",
-]
-rustls = ["tbot/rustls", "hyper-proxy/rustls", "reqwest/rustls"]
+native-tls = ["teloxide/native-tls", "reqwest/native-tls-vendored"]
+rustls = ["teloxide/rustls", "reqwest/rustls-tls"]
 
 [build-dependencies]
 ctl10n = "0.2.0"
@@ -23,6 +18,7 @@ ctl10n = "0.2.0"
 [dependencies]
 anyhow = "1.0"
 structopt = "0.3"
+url = "2"
 futures = "0.3"
 tokio = { version = "1.32", features = ["full"] }
 tokio-util = { version = "0.7", features = ["full"] }
@@ -37,17 +33,12 @@ pinyin = "0.11"
 either = "1.9"
 atomicwrites = "0.4"
 
-[dependencies.tbot]
-version = "0.6"
-path = "tbot"
+[dependencies.teloxide]
+version = "0.17"
 default-features = false
-features = ["proxy"]
-
-[dependencies.hyper-proxy]
-version = "0.9"
-default-features = false
+features = ["macros", "ctrlc_handler"]
 
 [dependencies.reqwest]
-version = "0.13"
+version = "0.12"
 default-features = false
 features = ["gzip", "json"]
