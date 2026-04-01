@@ -37,11 +37,11 @@ pub struct Feed {
     hash_list: Vec<u64>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/* #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Hub {
     pub callback: String,
     pub secret: String,
-}
+} */
 
 #[derive(Debug)]
 pub struct Database {

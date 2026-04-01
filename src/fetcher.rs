@@ -25,12 +25,21 @@ use crate::commands::MsgText;
 use crate::data::{Database, Feed, FeedUpdate};
 use crate::messages::{Escape, format_large_msg};
 
-pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval: u32) {
+use log::{debug, info, warn};
+
+pub fn start(
+    bot: Bot,
+    db: Arc<Mutex<Database>>,
+    min_interval: u32,
+    max_interval: u32,
+    fetch_on_start: bool,
+) {
     let mut queue = FetchQueue::new();
     // TODO: Don't use interval, it can accumulate ticks
     // replace it with delay_until
     let mut interval = time::interval_at(Instant::now(), Duration::from_secs(min_interval as u64));
     let throttle = Throttle::new(min_interval as usize);
+    let mut first_tick = fetch_on_start;
     tokio::spawn(async move {
         loop {
             select_biased! {
@@ -48,16 +57,23 @@ pub fn start(bot: Bot, db: Arc<Mutex<Database>>, min_interval: u32, max_interval
                 }
                 _ = interval.tick().fuse() => {
                     let feeds = db.lock().await.all_feeds();
+                    info!("Scheduling {} feed(s) for fetch", feeds.len());
                     for feed in feeds {
-                        let feed_interval = cmp::min(
-                            cmp::max(
-                                feed.ttl.map(|ttl| ttl * 60).unwrap_or_default(),
-                                min_interval,
-                            ),
-                            max_interval,
-                        ) as u64 - 1; // after -1, we can stagger with `interval`
-                        queue.enqueue(feed, Duration::from_secs(feed_interval));
+                        let feed_interval = if first_tick {
+                            0
+                        } else {
+                            cmp::min(
+                                cmp::max(
+                                    feed.ttl.map(|ttl| ttl * 60).unwrap_or_default(),
+                                    min_interval,
+                                ),
+                                max_interval,
+                            ) as u64 - 1 // after -1, we can stagger with `interval`
+                        };
+                        let enqueued = queue.enqueue(feed.clone(), Duration::from_secs(feed_interval));
+                        debug!("Feed '{}' ({}): enqueued={enqueued}, next fetch in {}s", feed.title, feed.link, feed_interval);
                     }
+                    first_tick = false;
                 }
             }
         }
@@ -69,9 +85,11 @@ async fn fetch_and_push_updates(
     db: Arc<Mutex<Database>>,
     feed: Feed,
 ) -> Result<(), teloxide::RequestError> {
+    info!("Fetching feed '{}' ({})", feed.title, feed.link);
     let new_feed = match pull_feed(&feed.link).await {
         Ok(feed) => feed,
         Err(e) => {
+            warn!("Failed to fetch '{}': {}", feed.link, e);
             let down_time = db.lock().await.get_or_update_down_time(&feed.link);
             if down_time.is_none() {
                 // user unsubscribed while fetching the feed
@@ -92,9 +110,13 @@ async fn fetch_and_push_updates(
     };
 
     let updates = db.lock().await.update(&feed.link, new_feed);
+    if updates.is_empty() {
+        debug!("No updates for '{}'", feed.link);
+    }
     for update in updates {
         match update {
             FeedUpdate::Items(items) => {
+                info!("Pushing {} new item(s) for '{}'", items.len(), feed.title);
                 let msgs =
                     format_large_msg(format!("<b>{}</b>", Escape(&feed.title)), &items, |item| {
                         let title = item.title.as_deref().unwrap_or_else(|| &feed.title);
@@ -112,6 +134,7 @@ async fn fetch_and_push_updates(
                 }
             }
             FeedUpdate::Title(new_title) => {
+                info!("Feed '{}' renamed to '{new_title}'", feed.title);
                 let msg = tr!(
                     "feed_renamed",
                     title = Escape(&feed.title),

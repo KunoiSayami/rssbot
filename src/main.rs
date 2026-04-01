@@ -8,6 +8,8 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 
 use anyhow::Context;
+use log::LevelFilter;
+use std::io::Write;
 use structopt::StructOpt;
 use teloxide::{requests::Requester, types::UserId};
 use tokio::{self, sync::Mutex};
@@ -88,6 +90,15 @@ pub struct Opt {
     /// DANGER: Insecure mode, accept invalid TLS certificates
     #[structopt(long)]
     insecure: bool,
+    /// Fetch all feeds immediately on startup instead of waiting for the first interval
+    #[structopt(long)]
+    fetch_on_start: bool,
+    /// Enable verbose logging. Pass multiple times for more verbosity (-v, -vv, -vvv)
+    #[structopt(short, long, parse(from_occurrences))]
+    verbose: u8,
+    /// Use systemd-compatible log format (no timestamps, level prefix only)
+    #[structopt(long)]
+    systemd: bool,
 }
 
 fn check_interval(s: String) -> Result<(), String> {
@@ -120,9 +131,9 @@ fn parse_human_size(s: &str) -> anyhow::Result<u64> {
 async fn main() -> anyhow::Result<()> {
     enable_fail_fast();
 
-    env_logger::Builder::from_default_env().init();
-
     let opt = Opt::from_args();
+
+    build_logger(opt.systemd, opt.verbose);
     let db = Arc::new(Mutex::new(Database::open(opt.database.clone())?));
 
     let client = build_reqwest_client();
@@ -145,12 +156,42 @@ async fn main() -> anyhow::Result<()> {
     BOT_ID.set(me.id).unwrap();
 
     gardener::start_pruning(bot.clone(), db.clone());
-    fetcher::start(bot.clone(), db.clone(), opt.min_interval, opt.max_interval);
+    fetcher::start(
+        bot.clone(),
+        db.clone(),
+        opt.min_interval,
+        opt.max_interval,
+        opt.fetch_on_start,
+    );
 
     let opt = Arc::new(opt);
     commands::register_commands(bot, opt, db).await;
 
     Ok(())
+}
+
+fn build_logger(is_systemd: bool, verbose: u8) {
+    let mut binding = env_logger::Builder::from_default_env();
+
+    if verbose < 1 {
+        binding.filter_module("rssbot::fetcher", LevelFilter::Warn);
+    }
+
+    if verbose < 2 {
+        binding
+            .filter_module("rustls", LevelFilter::Warn)
+            .filter_module("reqwest", LevelFilter::Warn)
+            .filter_module("h2", LevelFilter::Warn);
+    }
+
+    if verbose < 3 {
+        binding.filter_module("teloxide", LevelFilter::Warn);
+    }
+
+    if is_systemd {
+        binding.format(|buf, record| writeln!(buf, "[{}] - {}", record.level(), record.args()));
+    }
+    binding.init();
 }
 
 // Exit the process when any worker thread panicked
