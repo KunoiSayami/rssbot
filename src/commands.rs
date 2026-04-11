@@ -249,6 +249,7 @@ pub async fn register_commands(bot: Bot, opt: Arc<crate::Opt>, db: Arc<Mutex<Dat
 
     Dispatcher::builder(bot, handler)
         .dependencies(dptree::deps![db, opt])
+        .default_handler(|_upd| async {})
         .enable_ctrlc_handler()
         .build()
         .dispatch()
