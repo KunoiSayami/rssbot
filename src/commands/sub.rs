@@ -16,7 +16,7 @@ pub async fn sub(db: Arc<Mutex<Database>>, ctx: CmdContext) -> Result<(), teloxi
     let feed_url;
 
     match &*args {
-        [url] => feed_url = url,
+        [url] if url::Url::parse(url).is_ok() => feed_url = url,
         [channel, url] => {
             let user_id = match ctx.from.as_ref() {
                 Some(u) => u.id,
