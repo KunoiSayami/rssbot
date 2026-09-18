@@ -1,5 +1,6 @@
 rss_size_limit_exceeded = "RSS 超出大小限制（{size}）"
-continuous_fetch_error = "《{title}》已经连续 5 天拉取出错 ({error}), 可能已经关闭, 请取消订阅"
+continuous_fetch_error = "《{title}》已经连续 5 天拉取出错 ({error}), 已自动禁用并停止检查。可使用 /config recheck 开启后每 15 天自动重试, 或直接取消订阅"
+feed_reenabled = "《{title}》已恢复正常, 已自动重新启用"
 feed_renamed = "{title} 已更名为 {new_title}"
 network_error = "网络错误（{source}）"
 parsing_error = "解析错误（{source}）"
@@ -9,6 +10,7 @@ start_message = """命令列表：
 /sub       - 订阅一个 RSS：<code>/sub http://example.com/feed.xml</code>
 /unsub     - 退订一个 RSS：<code>/unsub http://example.com/feed.xml</code>
 /export    - 导出为 OPML
+/config    - 管理个人设置, 例如 <code>/config recheck on</code>
 所有命令均可在后面跟上频道 ID 来管理频道订阅
 例如 <code>/sub @BotNews http://example.com/feed.xml</code>"""
 subscription_list = "订阅列表："
@@ -33,3 +35,11 @@ unable_to_get_channel_info = "无法获取频道信息（{desc}），请将本 B
 channel_admin_only_command = "该命令只能由 Channel 管理员使用"
 group_admin_only_command = "该命令只能由群组管理员使用"
 make_bot_admin = "请将本 Bot 设为管理员"
+config_how_to_use = """使用方法: /config &lt;设置项&gt; [值]
+
+可用设置:
+<code>recheck on|off</code> - 当某个订阅因连续 5 天拉取失败被自动禁用后, 是否每 15 天自动重新检查, 恢复正常则自动重新启用。默认: 关闭"""
+recheck_enabled = "已开启自动重新检查: 你被禁用的订阅将每 15 天自动重新检查一次"
+recheck_disabled = "已关闭自动重新检查"
+recheck_status_on = "自动重新检查当前为开启状态"
+recheck_status_off = "自动重新检查当前为关闭状态"

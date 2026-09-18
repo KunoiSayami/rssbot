@@ -35,6 +35,28 @@ pub struct Feed {
     pub subscribers: HashSet<SubscriberId, Size64>,
     pub ttl: Option<u32>,
     hash_list: Vec<u64>,
+    /// Auto-disabled after failing to fetch for too long (forced, not user-configurable).
+    #[serde(default)]
+    pub disabled: bool,
+    /// When the feed was disabled, used to schedule the 15-day recheck.
+    #[serde(default)]
+    pub disabled_at: Option<SystemTime>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SubscriberSettings {
+    /// Opt-in: periodically recheck this subscriber's disabled feeds and
+    /// re-enable them if they start working again. Default off.
+    #[serde(default)]
+    pub recheck_enabled: bool,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct DatabaseFile {
+    #[serde(default)]
+    feeds: Vec<Feed>,
+    #[serde(default)]
+    subscriber_settings: HashMap<SubscriberId, SubscriberSettings>,
 }
 
 /* #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -48,6 +70,7 @@ pub struct Database {
     path: PathBuf,
     feeds: HashMap<FeedId, Feed, Size64>,
     subscribers: HashMap<SubscriberId, HashSet<FeedId, Size64>, Size64>,
+    subscriber_settings: HashMap<SubscriberId, SubscriberSettings>,
 }
 
 impl Database {
@@ -56,6 +79,7 @@ impl Database {
             path,
             feeds: HashMap::with_hasher(Size64::default()),
             subscribers: HashMap::with_hasher(Size64::default()),
+            subscriber_settings: HashMap::default(),
         };
 
         result.save()?;
@@ -66,7 +90,17 @@ impl Database {
     pub fn open(path: PathBuf) -> Result<Database, DataError> {
         if path.exists() {
             let f = File::open(&path)?;
-            let feeds_list: Vec<Feed> = serde_json::from_reader(&f)?;
+            // Old database files are a bare `Vec<Feed>`; new ones are a `DatabaseFile`.
+            // Try the new format first, falling back to the legacy one.
+            let (feeds_list, subscriber_settings) =
+                match serde_json::from_reader::<_, DatabaseFile>(&f) {
+                    Ok(file) => (file.feeds, file.subscriber_settings),
+                    Err(_) => {
+                        let f = File::open(&path)?;
+                        let feeds_list: Vec<Feed> = serde_json::from_reader(&f)?;
+                        (feeds_list, HashMap::default())
+                    }
+                };
 
             let mut feeds = HashMap::with_capacity_and_hasher(feeds_list.len(), Size64::default());
             let mut subscribers = HashMap::with_hasher(Size64::default());
@@ -86,6 +120,7 @@ impl Database {
                 path,
                 feeds,
                 subscribers,
+                subscriber_settings,
             })
         } else {
             Database::create(path)
@@ -156,6 +191,8 @@ impl Database {
                 ttl: rss.ttl,
                 hash_list: rss.items.iter().map(gen_item_hash).collect(),
                 subscribers: HashSet::default(),
+                disabled: false,
+                disabled_at: None,
             });
             feed.subscribers.insert(subscriber);
         }
@@ -269,9 +306,12 @@ impl Database {
     }
 
     pub fn save(&self) -> Result<(), DataError> {
-        let feeds_list: Vec<&Feed> = self.feeds.values().collect();
+        let file_contents = DatabaseFile {
+            feeds: self.feeds.values().cloned().collect(),
+            subscriber_settings: self.subscriber_settings.clone(),
+        };
         let file = AtomicFile::new(&self.path, OverwriteBehavior::AllowOverwrite);
-        file.write(|file| serde_json::to_writer(file, &feeds_list))
+        file.write(|file| serde_json::to_writer(file, &file_contents))
             .map_err(|e| match e {
                 atomicwrites::Error::Internal(e) => DataError::Io(e),
                 atomicwrites::Error::User(e) => {
@@ -280,6 +320,56 @@ impl Database {
                 }
             })?;
         Ok(())
+    }
+
+    pub fn recheck_enabled(&self, subscriber: SubscriberId) -> bool {
+        self.subscriber_settings
+            .get(&subscriber)
+            .map(|s| s.recheck_enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn set_recheck_enabled(&mut self, subscriber: SubscriberId, enabled: bool) {
+        self.subscriber_settings
+            .entry(subscriber)
+            .or_default()
+            .recheck_enabled = enabled;
+        self.save().unwrap_or_default();
+    }
+
+    /// Disable a feed after prolonged failure, stopping further fetch attempts.
+    pub fn disable_feed(&mut self, rss_link: &str) {
+        let feed_id = gen_hash(&rss_link);
+        if let Some(feed) = self.feeds.get_mut(&feed_id) {
+            feed.disabled = true;
+            feed.disabled_at = Some(SystemTime::now());
+        }
+        self.save().unwrap_or_default();
+    }
+
+    /// Re-enable a feed after a successful recheck fetch.
+    pub fn enable_feed(&mut self, rss_link: &str) {
+        let feed_id = gen_hash(&rss_link);
+        if let Some(feed) = self.feeds.get_mut(&feed_id) {
+            feed.disabled = false;
+            feed.disabled_at = None;
+        }
+        self.reset_down_time(rss_link);
+        self.save().unwrap_or_default();
+    }
+
+    /// Postpone the next recheck attempt for a feed that failed again.
+    pub fn postpone_recheck(&mut self, rss_link: &str) {
+        let feed_id = gen_hash(&rss_link);
+        if let Some(feed) = self.feeds.get_mut(&feed_id) {
+            feed.disabled_at = Some(SystemTime::now());
+        }
+        self.save().unwrap_or_default();
+    }
+
+    /// Whether at least one current subscriber of this feed opted into rechecking.
+    pub fn feed_recheck_wanted(&self, feed: &Feed) -> bool {
+        feed.subscribers.iter().any(|s| self.recheck_enabled(*s))
     }
 }
 

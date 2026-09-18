@@ -27,6 +27,18 @@ use crate::messages::{Escape, format_large_msg};
 
 use log::{debug, info, warn};
 
+/// A feed is auto-disabled after failing to fetch continuously for this long.
+const DISABLE_AFTER: Duration = Duration::from_secs(5 * 24 * 60 * 60);
+/// A disabled feed is rechecked (if a subscriber opted in) after this long.
+const RECHECK_INTERVAL: Duration = Duration::from_secs(15 * 24 * 60 * 60);
+
+fn is_recheck_due(feed: &Feed) -> bool {
+    feed.disabled_at
+        .and_then(|t| t.elapsed().ok())
+        .map(|elapsed| elapsed >= RECHECK_INTERVAL)
+        .unwrap_or(true)
+}
+
 pub fn start(
     bot: Bot,
     db: Arc<Mutex<Database>>,
@@ -56,9 +68,17 @@ pub fn start(
                     });
                 }
                 _ = interval.tick().fuse() => {
-                    let feeds = db.lock().await.all_feeds();
+                    let db_guard = db.lock().await;
+                    let feeds = db_guard.all_feeds();
                     info!("Scheduling {} feed(s) for fetch", feeds.len());
                     for feed in feeds {
+                        if feed.disabled {
+                            if is_recheck_due(&feed) && db_guard.feed_recheck_wanted(&feed) {
+                                debug!("Feed '{}' ({}): due for 15-day recheck", feed.title, feed.link);
+                                queue.enqueue(feed.clone(), Duration::ZERO);
+                            }
+                            continue;
+                        }
                         let feed_interval = if first_tick {
                             0
                         } else {
@@ -73,6 +93,7 @@ pub fn start(
                         let enqueued = queue.enqueue(feed.clone(), Duration::from_secs(feed_interval));
                         debug!("Feed '{}' ({}): enqueued={enqueued}, next fetch in {}s", feed.title, feed.link, feed_interval);
                     }
+                    drop(db_guard);
                     first_tick = false;
                 }
             }
@@ -90,14 +111,18 @@ async fn fetch_and_push_updates(
         Ok(feed) => feed,
         Err(e) => {
             warn!("Failed to fetch '{}': {}", feed.link, e);
+            if feed.disabled {
+                // Recheck failed again, wait for the next recheck interval.
+                db.lock().await.postpone_recheck(&feed.link);
+                return Ok(());
+            }
             let down_time = db.lock().await.get_or_update_down_time(&feed.link);
             if down_time.is_none() {
                 // user unsubscribed while fetching the feed
                 return Ok(());
             }
-            // 5 days
-            if down_time.unwrap().as_secs() > 5 * 24 * 60 * 60 {
-                db.lock().await.reset_down_time(&feed.link);
+            if down_time.unwrap() > DISABLE_AFTER {
+                db.lock().await.disable_feed(&feed.link);
                 let msg = tr!(
                     "continuous_fetch_error",
                     title = Escape(&feed.title),
@@ -108,6 +133,22 @@ async fn fetch_and_push_updates(
             return Ok(());
         }
     };
+
+    if feed.disabled {
+        info!(
+            "Feed '{}' ({}) recovered, re-enabling",
+            feed.title, feed.link
+        );
+        db.lock().await.enable_feed(&feed.link);
+        let msg = tr!("feed_reenabled", title = Escape(&feed.title));
+        push_updates(
+            &bot,
+            &db,
+            feed.subscribers.iter().copied(),
+            MsgText::html(&msg),
+        )
+        .await?;
+    }
 
     let updates = db.lock().await.update(&feed.link, new_feed);
     if updates.is_empty() {

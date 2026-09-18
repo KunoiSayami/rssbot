@@ -1,5 +1,6 @@
 rss_size_limit_exceeded = "RSS size limit exceeded （{size}）"
-continuous_fetch_error = "《{title}》has been pulled unsuccessfully for 5 consecutive days ({error}). It may have been closed, please unsubscribe."
+continuous_fetch_error = "《{title}》has been pulled unsuccessfully for 5 consecutive days ({error}). It has been automatically disabled and will no longer be checked. Enable /config recheck to have it automatically retried every 15 days, or unsubscribe if it's no longer needed."
+feed_reenabled = "《{title}》is working again and has been automatically re-enabled."
 feed_renamed = "{title} has been renamed to {new_title}"
 network_error = "Network error （{source}）"
 parsing_error = "Parsing error （{source}）"
@@ -9,6 +10,7 @@ start_message = """Command list:
 /sub       - Subscribe to an RSS: <code>/sub http://example.com/feed.xml</code>
 /unsub     - Unsubscribe from an RSS: <code>/unsub http://example.com/feed.xml</code>
 /export    - Export to OPML
+/config    - Manage per-user settings, e.g. <code>/config recheck on</code>
 All commands can be followed by the channel ID to manage channel subscriptions,
 f.e. <code>/sub @BotNews http://example.com/feed.xml</code>"""
 subscription_list = "Subscription list:"
@@ -35,3 +37,11 @@ unable_to_get_channel_info = "Unable to get channel information ({desc}), please
 channel_admin_only_command = "This command can only be used by channel administrators"
 group_admin_only_command = "This command can only be used by group administrators"
 make_bot_admin = "Please grant this bot administrator rights"
+config_how_to_use = """How to use: /config &lt;setting&gt; [value]
+
+Available settings:
+<code>recheck on|off</code> - When a feed is auto-disabled after 5 days of failures, automatically recheck it every 15 days and re-enable it if it starts working again. Default: off."""
+recheck_enabled = "Recheck enabled: your disabled feeds will be automatically rechecked every 15 days"
+recheck_disabled = "Recheck disabled"
+recheck_status_on = "Recheck is currently on"
+recheck_status_off = "Recheck is currently off"

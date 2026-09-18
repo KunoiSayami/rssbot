@@ -13,6 +13,7 @@ use tokio::sync::Mutex;
 
 use crate::data::Database;
 
+mod config;
 mod export;
 mod rss;
 mod start;
@@ -290,6 +291,7 @@ async fn dispatch_command(
         "sub" => sub::sub(db, ctx).await,
         "unsub" => unsub::unsub(db, ctx).await,
         "export" => export::export(db, ctx).await,
+        "config" => config::config(db, ctx).await,
         _ => return Ok(()),
     };
 
